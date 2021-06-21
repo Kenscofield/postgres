@@ -60,13 +60,16 @@ EncryptBufferBlock(BlockNumber blocknum, Page page)
 		key_cached = true;
 	}
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
-
-
+	set_buffer_encryption_iv(page, blocknum);
+	char *iv = buf_encryption_iv;
+	char *key = encryption_key_cache;
+	pg_encrypt_data((char*)page + PageEncryptOffset, (char*)page + PageEncryptOffset, SizeOfPageEncryption,
+			key, iv);
 
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 }
 
 void
@@ -107,13 +110,16 @@ DecryptBufferBlock(BlockNumber blocknum, Page page)
 		key_cached = true;
 	}
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
-
-
+	set_buffer_encryption_iv(page, blocknum);
+	char *iv = buf_encryption_iv;
+	char *key = encryption_key_cache;
+	pg_decrypt_data((char*)page + PageEncryptOffset, (char*)page + PageEncryptOffset, SizeOfPageEncryption,
+			key, iv);
 
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 }
 
 /*
@@ -148,13 +154,35 @@ set_buffer_encryption_iv(Page page, BlockNumber blocknum)
 
 	MemSet(buf_encryption_iv, 0, ENC_IV_SIZE);
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
+	// 
+	uint16 t = ENC_IV_SIZE;
+	uint32 tmp_logid = ((PageHeader) page)->pd_lsn.xlogid;
+	uint32 tmp_recoff = ((PageHeader) page)->pd_lsn.xrecoff;
+	unsigned int tmp_blocknum = blocknum;
 
+	while(tmp_blocknum && t > 0)
+	{
+		p[--t] = (tmp_blocknum % 10) + '0';
+		tmp_blocknum /= 10;
+	}
 
+	while(tmp_logid && t > 0)
+	{
+		p[--t] = (tmp_logid % 10) + '0';
+		tmp_logid /= 10;
+	}
+
+	while(tmp_recoff && t > 0)
+	{
+		p[--t] = (tmp_blocknum % 10) + '0';
+		tmp_recoff /= 10;
+	}
+
+	while(t > 0)p[--t] = '9';
 
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 
 }
-

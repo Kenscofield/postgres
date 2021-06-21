@@ -13,9 +13,7 @@
  */
 
 #include "postgres.h"
-
 #include <unistd.h>
-
 #include "storage/enc_internal.h"
 #include "storage/enc_common.h"
 #include "utils/memutils.h"
@@ -24,6 +22,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/hmac.h>
+
 #ifdef HAVE_OPENSSL_KDF
 #include <openssl/kdf.h>
 #endif
@@ -34,15 +33,6 @@
  */
 typedef const EVP_CIPHER *(*ossl_EVP_cipher_func) (void);
 
-/*
- * Supported cipher function and its key size. The index of each cipher
- * is (data_encryption_cipher - 1).
- */
-ossl_EVP_cipher_func cipher_func_table[] =
-{
-	EVP_aes_128_ctr,	/* TDE_ENCRYPTION_AES_128 */
-	EVP_aes_256_ctr		/* TDE_ENCRYPTION_AES_256 */
-};
 
 typedef struct CipherCtx
 {
@@ -73,9 +63,20 @@ static EVP_PKEY_CTX *create_ossl_derive_ctx(void);
 static void setup_encryption_ossl(void);
 static void setup_encryption(void) ;
 
+
+
 static void
 createCipherContext(void)
 {
+	/*
+ 	* Supported cipher function and its key size. The index of each cipher
+ 	* is (data_encryption_cipher - 1).
+ 	*/
+	ossl_EVP_cipher_func cipher_func_table[] =
+	{
+		EVP_aes_128_ctr(),	/* TDE_ENCRYPTION_AES_128 */
+		EVP_aes_256_ctr()	/* TDE_ENCRYPTION_AES_256 */
+	};
 	ossl_EVP_cipher_func cipherfunc = cipher_func_table[data_encryption_cipher - 1];
 	MemoryContext old_ctx;
 	CipherCtx *cctx;
@@ -101,9 +102,9 @@ createCipherContext(void)
 											   false, false);
 
 	/* Create key wrap/unwrap contexts */
-	cctx->wrap_ctx = create_ossl_encryption_ctx(EVP_aes_256_wrap,
+	cctx->wrap_ctx = create_ossl_encryption_ctx(EVP_aes_256_wrap(),
 												32, true, true);
-	cctx->unwrap_ctx = create_ossl_encryption_ctx(EVP_aes_256_wrap,
+	cctx->unwrap_ctx = create_ossl_encryption_ctx(EVP_aes_256_wrap(),
 												  32, false, true);
 
 	/* Create key derivation context */
@@ -180,13 +181,18 @@ create_ossl_encryption_ctx(ossl_EVP_cipher_func func, int klen, bool isenc,
 				 (errdetail("openssl error string: %s",
 							ERR_error_string(ERR_get_error(), NULL)))));
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
 
-
+	if(isenc)
+		EVP_EncryptInit_ex(ctx, (const EVP_CIPHER *)func, NULL, NULL, NULL);
+	else
+		EVP_DecryptInit_ex(ctx, (const EVP_CIPHER *)func, NULL, NULL, NULL);
+	EVP_CIPHER_CTX_set_key_length(ctx, klen);
+	EVP_CIPHER_CTX_set_padding(ctx, 1);
 
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 
 	return ctx;
 }
@@ -240,13 +246,13 @@ ossl_encrypt_data(const char *input, char *output, int size,
 
 	ctx = MyCipherCtx->enc_ctx;
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
-
-
+	EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv);
+	EVP_EncryptUpdate(ctx, output, &out_size, input, size);
 
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 }
 
 void
@@ -278,13 +284,12 @@ ossl_decrypt_data(const char *input, char *output, int size,
 
 	ctx = MyCipherCtx->dec_ctx;
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
-
-
-
+	EVP_DecryptInit_ex(ctx, NULL, NULL,key, iv);
+	EVP_DecryptUpdate(ctx, output, &out_size, input, size);
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 }
 
 void
@@ -351,13 +356,12 @@ ossl_compute_hmac(const unsigned char *hmac_key, int key_size,
 
 	Assert(hmac != NULL);
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
-
-
-
+	HMAC(EVP_sha256(), hmac_key, key_size, data, data_size, hmac, NULL);
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+
 }
 
 void
@@ -391,13 +395,12 @@ ossl_wrap_key(const unsigned char *key, int key_size, unsigned char *in,
 
 	ctx = MyCipherCtx->wrap_ctx;
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
-
-
-
+	EVP_EncryptInit_ex(ctx, NULL, NULL, key, NULL);
+	EVP_EncryptUpdate(ctx, out, out_size, in, in_size);
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 }
 
 void
@@ -431,11 +434,11 @@ ossl_unwrap_key(const unsigned char *key, int key_size, unsigned char *in,
 
 	ctx = MyCipherCtx->unwrap_ctx;
 
-	elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Entering %s...", __FUNCTION__);
 	/******************* Your Code Starts Here ************************/
-
-
+	EVP_DecryptInit_ex(ctx, NULL, NULL, key, NULL);
+	EVP_DecryptUpdate(ctx, out, out_size, in, in_size);
 
 	/******************************************************************/
-	elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
+	// elog(WARNING, "[TDE] Leaving %s...", __FUNCTION__);
 }
